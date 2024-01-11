@@ -1,0 +1,32 @@
+commit 7be7af0fda3633cd19e499617834cf4a5f51dd55
+Author: William Cohen <wcohen@redhat.com>
+Date:   Tue Jul 23 14:24:14 2019 -0400
+
+    Fix aarch64 to properly access arguments for wrapped syscalls
+    
+    Linux 4.18 added wrappers for aarch64 syscalls that pass a pointer to
+    a struct pt_regs holding the values for the actual arguments.  The
+    syscall tapsets initialize CONTEXT->sregs to point at this data
+    structure.  However, the aarch64 specific register access code was
+    using the CONTEXT->kregs and just getting the processor register state
+    when the kprobe triggered rather than the expected arguments in the
+    data structure being passed into the syscall.  The aarch64 specific
+    register code now gets the syscall arguments from the correct pt_regs
+    structure.
+
+diff --git a/tapset/arm64/registers.stp b/tapset/arm64/registers.stp
+index b2e5649..8773df2 100644
+--- a/tapset/arm64/registers.stp
++++ b/tapset/arm64/registers.stp
+@@ -58,7 +58,10 @@ function uarch_bytes:long() {
+ function _stp_get_register_by_offset:long (offset:long) %{ /* pure */
+ 	long value;
+ 	struct pt_regs *regs;
+-	regs = (CONTEXT->user_mode_p ? CONTEXT->uregs : CONTEXT->kregs);
++	if (CONTEXT->sregs)
++	  regs = CONTEXT->sregs;
++	else
++	  regs = (CONTEXT->user_mode_p ? CONTEXT->uregs : CONTEXT->kregs);
+ 	if (!regs) {
+ 		CONTEXT->last_error = "No registers available in this context";
+ 		return;
